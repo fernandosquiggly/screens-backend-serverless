@@ -131,7 +131,7 @@ router.get('/device/screens/command/get/:screenId', async (event) => {
 })
 
 /** POST /device/screens/content/post/:name — device reports playing media */
-router.post('/device/screens/content/post/:name', async (event) => {
+router.post('/device/screens/content/:name', async (event) => {
   const ctx = await getDeviceContext(event)
   if (!ctx) return unauthorized()
 

@@ -1,0 +1,15 @@
+{
+  "name": "screens-serverless",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "backend"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "cd backend && npm run build",
+    "deploy:dev": "cd backend && npm run deploy:dev",
+    "deploy:staging": "cd backend && npm run deploy:staging",
+    "deploy:prod": "cd backend && npm run deploy:prod"
+  }
+}

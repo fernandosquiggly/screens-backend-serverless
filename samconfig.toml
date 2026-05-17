@@ -1,0 +1,53 @@
+[default]
+[default.global.parameters]
+stack_name = "screens-dev"
+
+[default.build.parameters]
+build_dir   = ".aws-sam/build"
+cache       = true
+parallel    = true
+
+# ── dev ────────────────────────────────────────────────────────────────────────
+
+[dev]
+[dev.global.parameters]
+stack_name = "screens-dev"
+
+[dev.deploy.parameters]
+stack_name    = "screens-dev"
+region        = "us-east-1"
+capabilities  = "CAPABILITY_IAM"
+resolve_s3    = true
+parameter_overrides = "Env=dev"
+confirm_changeset   = false
+fail_on_empty_changeset = false
+
+# ── staging ───────────────────────────────────────────────────────────────────
+
+[staging]
+[staging.global.parameters]
+stack_name = "screens-staging"
+
+[staging.deploy.parameters]
+stack_name    = "screens-staging"
+region        = "us-east-1"
+capabilities  = "CAPABILITY_IAM"
+resolve_s3    = true
+parameter_overrides = "Env=staging"
+confirm_changeset   = true
+fail_on_empty_changeset = false
+
+# ── prod ──────────────────────────────────────────────────────────────────────
+
+[prod]
+[prod.global.parameters]
+stack_name = "screens-prod"
+
+[prod.deploy.parameters]
+stack_name    = "screens-prod"
+region        = "us-east-1"
+capabilities  = "CAPABILITY_IAM"
+resolve_s3    = true
+parameter_overrides = "Env=prod"
+confirm_changeset   = true
+fail_on_empty_changeset = false

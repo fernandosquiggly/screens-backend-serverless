@@ -1,0 +1,328 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Screens digital signage platform — serverless backend
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Architectures: [arm64]
+    Timeout: 29
+    MemorySize: 256
+    Environment:
+      Variables:
+        SCREENS_TABLE:   !Ref ScreensTable
+        CAMPAIGNS_TABLE: !Ref CampaignsTable
+        PAIRING_TABLE:   !Ref PairingTable
+        MEDIA_TABLE:     !Ref MediaTable
+        MEDIA_BUCKET:    !Ref MediaBucket
+        PUBLISH_QUEUE_URL: !Ref PublishQueue
+        COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+        COGNITO_CLIENT_ID:    !Ref CognitoClient
+        API_BASE_URL:    !Sub 'https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com'
+Parameters:
+  Env:
+    Type: String
+    AllowedValues: [dev, staging, prod]
+    Default: dev
+
+# ─── API Gateway ──────────────────────────────────────────────────────────────
+
+Resources:
+
+  ServerlessHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Env
+      CorsConfiguration:
+        AllowOrigins: ['*']
+        AllowHeaders: ['Content-Type', 'Authorization']
+        AllowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
+
+# ─── Lambda Functions ─────────────────────────────────────────────────────────
+
+  ScreensFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: index.handler
+      CodeUri: ../backend/src/modules/screens/
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref ScreensTable }
+      Events:
+        # Device endpoints
+        DeviceGetScreen:  { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /device/screens/get/{name},       Method: GET  } }
+        DeviceSetScreen:  { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /device/screens/set,              Method: POST } }
+        DeviceGetCmds:    { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /device/screens/command/get/{id}, Method: GET  } }
+        DevicePostContent:{ Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /device/screens/content/{name},   Method: POST } }
+        DevicePostState:  { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /device/screens/state/{name},     Method: POST } }
+        # Dashboard endpoints
+        ListScreens:      { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /screens,                        Method: GET  } }
+        GetStats:         { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /screens/stats,                  Method: GET  } }
+        GetScreen:        { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /screens/{screenId},             Method: GET  } }
+        PatchScreen:      { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /screens/{screenId},             Method: PATCH} }
+        DeleteScreen:     { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /screens/{screenId},             Method: DELETE}}
+        PostCommand:      { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /screens/{screenId}/command,     Method: POST } }
+        GetCommands:      { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /screens/{screenId}/commands,    Method: GET  } }
+        GetContent:       { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /screens/{screenId}/content,     Method: GET  } }
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Format: esm
+        OutExtension: [{ .js: .mjs }]
+        EntryPoints: [index.ts]
+        External: ['@aws-sdk/*']
+
+  CampaignsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: index.handler
+      CodeUri: ../backend/src/modules/campaigns/
+      Timeout: 60
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref CampaignsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref MediaTable }
+        - S3CrudPolicy: { BucketName: !Ref MediaBucket }
+        - SQSSendMessagePolicy: { QueueName: !GetAtt PublishQueue.QueueName }
+      Events:
+        # Device endpoints
+        DeviceCampaigns:    { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /device/campaigns/{screenId},              Method: GET  } }
+        DeviceChecksum:     { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /device/campaigns/{screenId}/checksum,     Method: GET  } }
+        DevicePresigned:    { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /device/campaigns/presigned/{zipName},     Method: GET  } }
+        # Dashboard endpoints
+        ListCampaigns:      { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /campaigns,                               Method: GET  } }
+        CreateCampaign:     { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /campaigns,                               Method: POST } }
+        PatchCampaign:      { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /campaigns/{campaignId},                  Method: PATCH} }
+        DeleteCampaign:     { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /campaigns/{campaignId},                  Method: DELETE}}
+        AssignCampaign:     { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /campaigns/{campaignId}/assign,           Method: POST } }
+        ListMedia:          { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /campaigns/{campaignId}/media,            Method: GET  } }
+        PresignedUpload:    { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /campaigns/{campaignId}/media/presigned,  Method: POST } }
+        ConfirmMedia:       { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /campaigns/{campaignId}/media/{id}/confirm, Method: POST}}
+        PatchMedia:         { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /campaigns/{campaignId}/media/{id},       Method: PATCH} }
+        DeleteMedia:        { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /campaigns/{campaignId}/media/{id},       Method: DELETE}}
+        PublishCampaign:    { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /campaigns/{campaignId}/publish,          Method: POST } }
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Format: esm
+        OutExtension: [{ .js: .mjs }]
+        EntryPoints: [index.ts]
+        External: ['@aws-sdk/*']
+
+  PublishWorkerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: publishWorker.handler
+      CodeUri: ../backend/src/modules/campaigns/
+      Timeout: 300
+      MemorySize: 1024
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref CampaignsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref MediaTable }
+        - S3CrudPolicy: { BucketName: !Ref MediaBucket }
+      Events:
+        SQSTrigger:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt PublishQueue.Arn
+            BatchSize: 1
+            FunctionResponseTypes: [ReportBatchItemFailures]
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Format: esm
+        OutExtension: [{ .js: .mjs }]
+        EntryPoints: [publishWorker.ts]
+        External: ['@aws-sdk/*']
+
+  PairingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: index.handler
+      CodeUri: ../backend/src/modules/pairing/
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref PairingTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref ScreensTable }
+      Events:
+        PairingRequest: { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /pairing/request,        Method: POST } }
+        PairingConfirm: { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /pairing/confirm,        Method: POST } }
+        PairingStatus:  { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /pairing/status/{pin},   Method: GET  } }
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Format: esm
+        OutExtension: [{ .js: .mjs }]
+        EntryPoints: [index.ts]
+        External: ['@aws-sdk/*']
+
+  AuthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: index.handler
+      CodeUri: ../backend/src/modules/auth/
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminGetUser
+                - cognito-idp:AdminUpdateUserAttributes
+                - cognito-idp:InitiateAuth
+                - cognito-idp:SignUp
+                - cognito-idp:ConfirmSignUp
+                - cognito-idp:ForgotPassword
+                - cognito-idp:ConfirmForgotPassword
+                - cognito-idp:RespondToAuthChallenge
+              Resource: !GetAtt CognitoUserPool.Arn
+      Events:
+        AuthLogin:          { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /auth/login,           Method: POST } }
+        AuthRefresh:        { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /auth/refresh,         Method: POST } }
+        AuthSignup:         { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /auth/signup,          Method: POST } }
+        AuthConfirm:        { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /auth/confirm,         Method: POST } }
+        AuthForgotPassword: { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /auth/forgot-password, Method: POST } }
+        AuthResetPassword:  { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /auth/reset-password,  Method: POST } }
+        AuthNewPassword:    { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /auth/new-password,    Method: POST } }
+        AuthMe:             { Type: HttpApi, Properties: { ApiId: !Ref ServerlessHttpApi, Path: /auth/me,              Method: GET  } }
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Format: esm
+        OutExtension: [{ .js: .mjs }]
+        EntryPoints: [index.ts]
+        External: ['@aws-sdk/*']
+
+# ─── DynamoDB Tables ──────────────────────────────────────────────────────────
+
+  ScreensTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub screens-${Env}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: pk, AttributeType: S }
+        - { AttributeName: sk, AttributeType: S }
+        - { AttributeName: gsi1pk, AttributeType: S }
+        - { AttributeName: gsi1sk, AttributeType: S }
+      KeySchema:
+        - { AttributeName: pk, KeyType: HASH }
+        - { AttributeName: sk, KeyType: RANGE }
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - { AttributeName: gsi1pk, KeyType: HASH }
+            - { AttributeName: gsi1sk, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+
+  CampaignsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub campaigns-${Env}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: pk, AttributeType: S }
+        - { AttributeName: sk, AttributeType: S }
+        - { AttributeName: gsi1pk, AttributeType: S }
+        - { AttributeName: gsi1sk, AttributeType: S }
+      KeySchema:
+        - { AttributeName: pk, KeyType: HASH }
+        - { AttributeName: sk, KeyType: RANGE }
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - { AttributeName: gsi1pk, KeyType: HASH }
+            - { AttributeName: gsi1sk, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+
+  MediaTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub campaign-media-${Env}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: pk, AttributeType: S }
+        - { AttributeName: sk, AttributeType: S }
+      KeySchema:
+        - { AttributeName: pk, KeyType: HASH }
+        - { AttributeName: sk, KeyType: RANGE }
+
+  PairingTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub pairing-${Env}
+      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification: { AttributeName: ttl, Enabled: true }
+      AttributeDefinitions:
+        - { AttributeName: pk, AttributeType: S }
+        - { AttributeName: sk, AttributeType: S }
+      KeySchema:
+        - { AttributeName: pk, KeyType: HASH }
+        - { AttributeName: sk, KeyType: RANGE }
+
+# ─── S3 Bucket ────────────────────────────────────────────────────────────────
+
+  MediaBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub screens-media-${Env}-${AWS::AccountId}
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, PUT, POST]
+            AllowedOrigins: ['*']
+            MaxAge: 3600
+
+# ─── SQS Queue ────────────────────────────────────────────────────────────────
+
+  PublishQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub screens-publish-${Env}
+      VisibilityTimeout: 360
+      MessageRetentionPeriod: 86400
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt PublishDLQ.Arn
+        maxReceiveCount: 3
+
+  PublishDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub screens-publish-dlq-${Env}
+
+# ─── Cognito ──────────────────────────────────────────────────────────────────
+
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub screens-${Env}
+      AutoVerifiedAttributes: [email]
+      Schema:
+        - { Name: tenantId, AttributeDataType: String, Mutable: true }
+        - { Name: role, AttributeDataType: String, Mutable: true }
+      UsernameAttributes: [email]
+      Policies:
+        PasswordPolicy: { MinimumLength: 8, RequireUppercase: false, RequireSymbols: false }
+
+  CognitoClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: screens-dashboard
+      UserPoolId: !Ref CognitoUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+
+# ─── Outputs ──────────────────────────────────────────────────────────────────
+
+Outputs:
+  ApiUrl:       { Value: !Sub 'https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Env}' }
+  MediaBucket:  { Value: !Ref MediaBucket }
+  UserPoolId:   { Value: !Ref CognitoUserPool }
+  ClientId:     { Value: !Ref CognitoClient }

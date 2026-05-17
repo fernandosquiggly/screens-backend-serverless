@@ -1,0 +1,10 @@
+node_modules/
+.aws-sam/
+dist/
+.dist/
+*.js.map
+.env
+.env.*
+!.env.example
+samconfig.local.toml
+infra/local-env.json

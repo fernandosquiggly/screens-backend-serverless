@@ -1,0 +1,60 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main        # → prod
+      - staging     # → staging
+      - develop     # → dev
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set environment
+        id: env
+        run: |
+          if   [[ "${{ github.ref_name }}" == "main" ]];    then echo "env=prod"    >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref_name }}" == "staging" ]]; then echo "env=staging" >> $GITHUB_OUTPUT
+          else                                                    echo "env=dev"     >> $GITHUB_OUTPUT
+          fi
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Setup Python (SAM CLI)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install SAM CLI
+        run: pip install aws-sam-cli
+
+      - name: SAM build
+        working-directory: backend
+        run: sam build --config-file ../samconfig.toml
+
+      - name: SAM deploy
+        working-directory: backend
+        run: sam deploy --config-env ${{ steps.env.outputs.env }} --config-file ../samconfig.toml --no-confirm-changeset

@@ -1,0 +1,33 @@
+{
+  "name": "screens-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "sam build --config-file ../samconfig.toml",
+    "deploy:dev": "sam deploy --config-env dev --config-file ../samconfig.toml",
+    "deploy:staging": "sam deploy --config-env staging --config-file ../samconfig.toml",
+    "deploy:prod": "sam deploy --config-env prod --config-file ../samconfig.toml",
+    "local": "sam local start-api --config-file ../samconfig.toml --env-vars ../infra/local-env.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.782.0",
+    "@aws-sdk/client-dynamodb": "^3.782.0",
+    "@aws-sdk/client-s3": "^3.782.0",
+    "@aws-sdk/client-sqs": "^3.782.0",
+    "@aws-sdk/lib-dynamodb": "^3.782.0",
+    "@aws-sdk/s3-request-presigner": "^3.782.0",
+    "aws-jwt-verify": "^4.0.1",
+    "jszip": "^3.10.1",
+    "qrcode": "^1.5.4",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.146",
+    "@types/node": "^22.0.0",
+    "@types/qrcode": "^1.5.5",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.0"
+  }
+}

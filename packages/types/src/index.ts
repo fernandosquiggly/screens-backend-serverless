@@ -82,6 +82,13 @@ export interface ScreenMediaFile {
 
 // ─── Campaign ─────────────────────────────────────────────────────────────────
 
+export interface CampaignSchedule {
+  days: number[]      // 0=Sun … 6=Sat — empty means every day
+  startTime: string   // "08:00" local time in timezone
+  endTime: string     // "20:00"
+  timezone: string    // IANA tz, e.g. "America/Argentina/Buenos_Aires"
+}
+
 export interface Campaign {
   campaignId: string
   tenantId: string
@@ -90,6 +97,7 @@ export interface Campaign {
   contentHash: string
   isActive: boolean
   screenIds: string[]
+  schedule: CampaignSchedule | null
   createdAt: string
   updatedAt: string
 }

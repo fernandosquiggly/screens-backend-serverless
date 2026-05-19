@@ -12,6 +12,27 @@ import { createHash } from 'crypto'
 
 const router = new Router()
 
+// ─── Schedule helper ──────────────────────────────────────────────────────────
+
+function isScheduleActive(schedule: { days: number[]; startTime: string; endTime: string; timezone: string } | null): boolean {
+  if (!schedule) return true  // no schedule = always active
+
+  const now = new Date()
+  const localStr = now.toLocaleString('en-US', { timeZone: schedule.timezone })
+  const local = new Date(localStr)
+
+  const day = local.getDay()  // 0=Sun … 6=Sat
+  if (schedule.days.length > 0 && !schedule.days.includes(day)) return false
+
+  const [startH, startM] = schedule.startTime.split(':').map(Number)
+  const [endH, endM]   = schedule.endTime.split(':').map(Number)
+  const currentMinutes = local.getHours() * 60 + local.getMinutes()
+  const startMinutes   = startH * 60 + startM
+  const endMinutes     = endH   * 60 + endM
+
+  return currentMinutes >= startMinutes && currentMinutes < endMinutes
+}
+
 // ─── Device endpoints ─────────────────────────────────────────────────────────
 
 /** GET /device/campaigns/:screenId — list active campaigns for a screen */
@@ -30,7 +51,6 @@ router.get('/device/campaigns/:screenId', async (event) => {
     },
   }))
 
-  // Retrieve actual campaign objects
   const campaignIds = (res.Items ?? []).map(i => i.campaignId as string)
   const campaigns = await Promise.all(
     campaignIds.map(id =>
@@ -41,7 +61,7 @@ router.get('/device/campaigns/:screenId', async (event) => {
     )
   )
 
-  const active = campaigns.filter(c => c && c.isActive)
+  const active = campaigns.filter(c => c && c.isActive && isScheduleActive(c.schedule ?? null))
   return ok({ results: active.map(c => ({ name: c!.name, content_hash: c!.contentHash })) })
 })
 
@@ -190,7 +210,7 @@ router.patch('/campaigns/:campaignId', async (event) => {
   if (!auth) return unauthorized()
 
   const campaignId = event.pathParameters?.campaignId ?? ''
-  const body = parseBody<{ name?: string; s3Key?: string; isActive?: boolean }>(event)
+  const body = parseBody<{ name?: string; s3Key?: string; isActive?: boolean; schedule?: unknown }>(event)
 
   const expressions: string[] = ['updatedAt = :now']
   const vals: Record<string, unknown> = { ':now': new Date().toISOString() }
@@ -198,6 +218,7 @@ router.patch('/campaigns/:campaignId', async (event) => {
   if (body.name     !== undefined) { expressions.push('name = :n');     vals[':n'] = body.name }
   if (body.s3Key    !== undefined) { expressions.push('s3Key = :k');    vals[':k'] = body.s3Key }
   if (body.isActive !== undefined) { expressions.push('isActive = :a'); vals[':a'] = body.isActive }
+  if ('schedule' in body)          { expressions.push('schedule = :s'); vals[':s'] = body.schedule ?? null }
 
   const res = await db.send(new UpdateCommand({
     TableName: Tables.campaigns,

@@ -20,7 +20,6 @@ stack_name    = "screens-dev"
 region        = "us-east-1"
 capabilities  = "CAPABILITY_IAM"
 resolve_s3    = true
-profile       = "screens"
 parameter_overrides = "Env=dev"
 confirm_changeset   = false
 fail_on_empty_changeset = false
@@ -36,7 +35,6 @@ stack_name    = "screens-staging"
 region        = "us-east-1"
 capabilities  = "CAPABILITY_IAM"
 resolve_s3    = true
-profile       = "screens"
 parameter_overrides = "Env=staging"
 confirm_changeset   = true
 fail_on_empty_changeset = false
@@ -52,7 +50,6 @@ stack_name    = "screens-prod"
 region        = "us-east-1"
 capabilities  = "CAPABILITY_IAM"
 resolve_s3    = true
-profile       = "screens"
 parameter_overrides = "Env=prod"
 confirm_changeset   = true
 fail_on_empty_changeset = false

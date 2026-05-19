@@ -12,6 +12,7 @@ import {
   NotAuthorizedException,
   UserNotConfirmedException,
 } from '@aws-sdk/client-cognito-identity-provider'
+import { randomUUID } from 'crypto'
 import { Router, parseBody } from '../../shared/router.js'
 import { ok, badRequest, unauthorized, serverError, created } from '../../shared/response.js'
 import { getAuthContext } from '../../shared/auth.js'
@@ -84,10 +85,12 @@ router.post('/auth/refresh', async (event) => {
 // ── POST /auth/signup ─────────────────────────────────────────────────────────
 
 router.post('/auth/signup', async (event) => {
-  const body = parseBody<{ email: string; password: string; tenantId: string }>(event)
-  if (!body?.email || !body?.password || !body?.tenantId) {
-    return badRequest('email, password and tenantId required')
+  const body = parseBody<{ email: string; password: string; companyName: string }>(event)
+  if (!body?.email || !body?.password || !body?.companyName) {
+    return badRequest('email, password and companyName required')
   }
+
+  const tenantId = randomUUID()
 
   try {
     await cognito.send(new SignUpCommand({
@@ -96,11 +99,11 @@ router.post('/auth/signup', async (event) => {
       Password: body.password,
       UserAttributes: [
         { Name: 'email',             Value: body.email },
-        { Name: 'custom:tenantId',   Value: body.tenantId },
+        { Name: 'custom:tenantId',   Value: tenantId },
         { Name: 'custom:role',       Value: 'admin' },
       ],
     }))
-    return created({ message: 'User created. Check email for confirmation code.' })
+    return created({ message: 'Account created. Check your email for the confirmation code.', tenantId })
   } catch (err: any) {
     if (err.name === 'UsernameExistsException') return badRequest('Email already registered')
     if (err.name === 'InvalidPasswordException') return badRequest(err.message)

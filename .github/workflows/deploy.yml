@@ -1,14 +1,11 @@
-name: Deploy
+name: Deploy Backend
 
 on:
   push:
     branches:
-      - main        # → prod
-      - staging     # → staging
-      - develop     # → dev
+      - main     # → dev (single env for now, add staging/prod branches later)
 
 permissions:
-  id-token: write
   contents: read
 
 jobs:
@@ -21,15 +18,16 @@ jobs:
       - name: Set environment
         id: env
         run: |
-          if   [[ "${{ github.ref_name }}" == "main" ]];    then echo "env=prod"    >> $GITHUB_OUTPUT
+          if   [[ "${{ github.ref_name }}" == "main" ]];    then echo "env=dev"     >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref_name }}" == "staging" ]]; then echo "env=staging" >> $GITHUB_OUTPUT
-          else                                                    echo "env=dev"     >> $GITHUB_OUTPUT
+          else                                                    echo "env=prod"    >> $GITHUB_OUTPUT
           fi
 
-      - name: Configure AWS credentials (OIDC)
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
       - name: Setup Node 20
@@ -51,10 +49,11 @@ jobs:
       - name: Install SAM CLI
         run: pip install aws-sam-cli
 
+      - name: Install esbuild
+        run: npm install -g esbuild
+
       - name: SAM build
-        working-directory: backend
-        run: sam build --config-file ../samconfig.toml
+        run: sam build --config-file samconfig.toml --template infra/template.yaml
 
       - name: SAM deploy
-        working-directory: backend
-        run: sam deploy --config-env ${{ steps.env.outputs.env }} --config-file ../samconfig.toml --no-confirm-changeset
+        run: sam deploy --config-env ${{ steps.env.outputs.env }} --config-file samconfig.toml --no-confirm-changeset

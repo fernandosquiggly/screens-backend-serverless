@@ -160,6 +160,11 @@ Resources:
           Properties:
             Path: /campaigns
             Method: POST
+        GetCampaign:
+          Type: HttpApi
+          Properties:
+            Path: '/campaigns/{campaignId}'
+            Method: GET
         PatchCampaign:
           Type: HttpApi
           Properties:

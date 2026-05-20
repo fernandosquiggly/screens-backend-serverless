@@ -168,6 +168,31 @@ router.get('/campaigns', async (event) => {
   return ok(campaigns)
 })
 
+/** GET /campaigns/:campaignId — get single campaign */
+router.get('/campaigns/:campaignId', async (event) => {
+  const auth = await getAuthContext(event)
+  if (!auth) return unauthorized()
+
+  const campaignId = event.pathParameters?.campaignId ?? ''
+
+  const res = await db.send(new GetCommand({
+    TableName: Tables.campaigns,
+    Key: { pk: campaignKeys.pk(auth.tenantId), sk: campaignKeys.sk(campaignId) },
+  }))
+  if (!res.Item) return notFound('Campaign not found')
+
+  const assigns = await db.send(new QueryCommand({
+    TableName: Tables.campaigns,
+    KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
+    ExpressionAttributeValues: {
+      ':pk': `SCREENASSIGN_BY_CAMPAIGN#${campaignId}`,
+      ':prefix': 'SCREEN#',
+    },
+  }))
+
+  return ok({ ...res.Item, screenIds: (assigns.Items ?? []).map(a => a.screenId) })
+})
+
 /** POST /campaigns — create campaign */
 router.post('/campaigns', async (event) => {
   const auth = await getAuthContext(event)

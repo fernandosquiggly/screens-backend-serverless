@@ -112,6 +112,9 @@ export interface CampaignMedia {
   mediaType: 'image' | 'video'
   order: number
   sizeBytes: number
+  durationSeconds: number   // seconds per slide for images; ignored for videos
+  width?: number
+  height?: number
   createdAt: string
 }
 

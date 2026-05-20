@@ -387,32 +387,56 @@ router.post('/campaigns/:campaignId/media/:mediaId/confirm', async (event) => {
   }))
   const maxOrder = (existing.Items ?? []).reduce((max, i) => Math.max(max, i.order as number), -1)
 
+  const body = parseBody<{ width?: number; height?: number }>(event)
+
   const res = await db.send(new UpdateCommand({
     TableName: Tables.media,
     Key: { pk: mediaKeys.pk(campaignId!), sk: mediaKeys.sk(mediaId!) },
-    UpdateExpression: 'SET confirmed = :t, #o = :ord',
+    UpdateExpression: 'SET confirmed = :t, #o = :ord, durationSeconds = :dur' +
+      (body.width  ? ', width = :w'  : '') +
+      (body.height ? ', height = :h' : ''),
     ExpressionAttributeNames: { '#o': 'order' },
-    ExpressionAttributeValues: { ':t': true, ':ord': maxOrder + 1 },
+    ExpressionAttributeValues: {
+      ':t': true, ':ord': maxOrder + 1, ':dur': 10,
+      ...(body.width  ? { ':w': body.width }  : {}),
+      ...(body.height ? { ':h': body.height } : {}),
+    },
     ReturnValues: 'ALL_NEW',
   }))
 
   return ok(res.Attributes)
 })
 
-/** PATCH /campaigns/:campaignId/media/:mediaId — reorder */
+/** PATCH /campaigns/:campaignId/media/:mediaId — reorder or update duration */
 router.patch('/campaigns/:campaignId/media/:mediaId', async (event) => {
   const auth = await getAuthContext(event)
   if (!auth) return unauthorized()
 
   const { campaignId, mediaId } = event.pathParameters ?? {}
-  const body = parseBody<{ order: number }>(event)
+  const body = parseBody<{ order?: number; durationSeconds?: number }>(event)
+
+  const expressions: string[] = []
+  const names: Record<string, string> = {}
+  const vals: Record<string, unknown> = {}
+
+  if (body.order !== undefined) {
+    expressions.push('#o = :ord')
+    names['#o'] = 'order'
+    vals[':ord'] = body.order
+  }
+  if (body.durationSeconds !== undefined) {
+    expressions.push('durationSeconds = :dur')
+    vals[':dur'] = Math.max(1, body.durationSeconds)
+  }
+
+  if (expressions.length === 0) return badRequest('order or durationSeconds required')
 
   const res = await db.send(new UpdateCommand({
     TableName: Tables.media,
     Key: { pk: mediaKeys.pk(campaignId!), sk: mediaKeys.sk(mediaId!) },
-    UpdateExpression: 'SET #o = :ord',
-    ExpressionAttributeNames: { '#o': 'order' },
-    ExpressionAttributeValues: { ':ord': body.order },
+    UpdateExpression: `SET ${expressions.join(', ')}`,
+    ExpressionAttributeNames: Object.keys(names).length ? names : undefined,
+    ExpressionAttributeValues: vals,
     ReturnValues: 'ALL_NEW',
   }))
 

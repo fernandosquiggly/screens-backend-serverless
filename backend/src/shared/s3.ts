@@ -2,7 +2,10 @@ import { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } fro
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { createHash } from 'crypto'
 
-export const s3 = new S3Client({})
+// requestChecksumCalculation: WHEN_REQUIRED disables the automatic CRC32
+// checksum that SDK v3 adds to PUT requests by default — presigned upload
+// URLs with checksum conditions can't be fulfilled by browser fetch/XHR.
+export const s3 = new S3Client({ requestChecksumCalculation: 'WHEN_REQUIRED' })
 
 export const Buckets = {
   media: process.env.MEDIA_BUCKET!,

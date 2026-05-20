@@ -22,27 +22,38 @@ export class Router {
   delete(path: string, h: Handler) { this.add('DELETE', path, h) }
 
   async handle(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
+    const CORS = {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+    }
+
     const method = event.requestContext.http.method
     const path = event.rawPath
+
+    // Handle preflight
+    if (method === 'OPTIONS') {
+      return { statusCode: 200, headers: { ...CORS, 'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS' }, body: '' }
+    }
 
     for (const route of this.routes) {
       if (route.method !== method) continue
       const match = path.match(route.pattern)
       if (!match) continue
 
-      // Inject path params into event
       const pathParameters: Record<string, string> = {}
       route.paramNames.forEach((name, i) => { pathParameters[name] = decodeURIComponent(match[i + 1]) })
       event.pathParameters = { ...event.pathParameters, ...pathParameters }
 
-      return route.handler(event)
+      try {
+        return await route.handler(event)
+      } catch (err) {
+        console.error(`[router] unhandled error in ${method} ${path}:`, err)
+        return { statusCode: 500, headers: CORS, body: JSON.stringify({ success: false, error: 'Internal server error' }) }
+      }
     }
 
-    return {
-      statusCode: 404,
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      body: JSON.stringify({ success: false, error: 'Route not found' }),
-    }
+    return { statusCode: 404, headers: CORS, body: JSON.stringify({ success: false, error: 'Route not found' }) }
   }
 }
 

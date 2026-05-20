@@ -194,6 +194,59 @@ router.get('/screens', async (event) => {
   return ok((res.Items ?? []).map(toScreen))
 })
 
+/** GET /screens/stats — dashboard summary (must be before /:screenId) */
+router.get('/screens/stats', async (event) => {
+  const auth = await getAuthContext(event)
+  if (!auth) return unauthorized()
+
+  const res = await db.send(new QueryCommand({
+    TableName: Tables.screens,
+    IndexName: 'GSI1',
+    KeyConditionExpression: 'gsi1pk = :pk',
+    FilterExpression: 'isActive = :a AND begins_with(sk, :prefix)',
+    ExpressionAttributeValues: {
+      ':pk': screenKeys.gsi1pk(auth.tenantId),
+      ':a': true,
+      ':prefix': 'SCREEN#',
+    },
+  }))
+
+  const screens = res.Items ?? []
+  const cutoff = new Date(Date.now() - ONLINE_CUTOFF_MS).toISOString()
+  const online = screens.filter(s => s.reportedAt && s.reportedAt >= cutoff).length
+
+  // Campaign counts
+  const { QueryCommand: QC } = await import('@aws-sdk/lib-dynamodb')
+  const { Tables: T } = await import('../../shared/db.js')
+  const campaignRes = await db.send(new QC({
+    TableName: T.campaigns,
+    IndexName: 'GSI1',
+    KeyConditionExpression: 'gsi1pk = :pk',
+    ExpressionAttributeValues: { ':pk': `CAMPAIGNS#${auth.tenantId}` },
+    Select: 'COUNT',
+  }))
+  const activeRes = await db.send(new QC({
+    TableName: T.campaigns,
+    IndexName: 'GSI1',
+    KeyConditionExpression: 'gsi1pk = :pk',
+    FilterExpression: 'isActive = :a',
+    ExpressionAttributeValues: { ':pk': `CAMPAIGNS#${auth.tenantId}`, ':a': true },
+    Select: 'COUNT',
+  }))
+
+  return ok({
+    totalScreens: screens.length,
+    onlineScreens: online,
+    offlineScreens: screens.length - online,
+    totalCampaigns: campaignRes.Count ?? 0,
+    activeCampaigns: activeRes.Count ?? 0,
+    deviceTypes: {
+      raspberry_pi: screens.filter(s => s.deviceType === 'raspberry_pi').length,
+      android_tv:   screens.filter(s => s.deviceType === 'android_tv').length,
+    },
+  })
+})
+
 /** GET /screens/:screenId — screen detail */
 router.get('/screens/:screenId', async (event) => {
   const auth = await getAuthContext(event)
@@ -322,35 +375,4 @@ router.get('/screens/:screenId/content', async (event) => {
 })
 
 /** GET /screens/stats — dashboard stats */
-router.get('/screens/stats', async (event) => {
-  const auth = await getAuthContext(event)
-  if (!auth) return unauthorized()
-
-  const res = await db.send(new QueryCommand({
-    TableName: Tables.screens,
-    IndexName: 'GSI1',
-    KeyConditionExpression: 'gsi1pk = :pk',
-    FilterExpression: 'isActive = :a AND begins_with(sk, :prefix)',
-    ExpressionAttributeValues: {
-      ':pk': screenKeys.gsi1pk(auth.tenantId),
-      ':a': true,
-      ':prefix': 'SCREEN#',
-    },
-  }))
-
-  const screens = res.Items ?? []
-  const cutoff = new Date(Date.now() - ONLINE_CUTOFF_MS).toISOString()
-  const online = screens.filter(s => s.reportedAt && s.reportedAt >= cutoff).length
-
-  return ok({
-    totalScreens: screens.length,
-    onlineScreens: online,
-    offlineScreens: screens.length - online,
-    deviceTypes: {
-      raspberry_pi: screens.filter(s => s.deviceType === 'raspberry_pi').length,
-      android_tv: screens.filter(s => s.deviceType === 'android_tv').length,
-    },
-  })
-})
-
 export const handler = (event: APIGatewayProxyEventV2) => router.handle(event)

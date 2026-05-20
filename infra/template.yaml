@@ -45,6 +45,8 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ScreensTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref CampaignsTable
       Events:
         DeviceGetScreen:
           Type: HttpApi
